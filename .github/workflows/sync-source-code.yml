@@ -1,0 +1,152 @@
+name: Sync Source Code
+
+on:
+  schedule:
+    # GitHub Actions 使用 UTC；20:00 UTC = 北京时间次日 04:00
+    - cron: "0 20 * * *"
+
+  # 支持手动触发
+  workflow_dispatch:
+
+# 防止定时任务和手动任务同时推送
+concurrency:
+  group: sync-source-code-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  # “明文源吗”的 URL 编码形式
+  SOURCE_URL: "https://raw.githubusercontent.com/byJoey/cfnew/main/%E6%98%8E%E6%96%87%E6%BA%90%E5%90%97"
+  TARGET_FILE: "_worker.js"
+  LOG_FILE: "log/latest.log"
+
+jobs:
+  sync:
+    name: Sync and Keep Alive
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+
+      - name: Download source and update log
+        id: sync
+        shell: bash
+        env:
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          TRIGGER_EVENT: ${{ github.event_name }}
+        run: |
+          set -Eeuo pipefail
+
+          TEMP_FILE="$(mktemp)"
+          trap 'rm -f "${TEMP_FILE}"' EXIT
+
+          echo "正在下载：${SOURCE_URL}"
+
+          curl \
+            --fail \
+            --silent \
+            --show-error \
+            --location \
+            --retry 3 \
+            --retry-delay 2 \
+            --retry-all-errors \
+            --connect-timeout 15 \
+            --max-time 120 \
+            --proto '=https' \
+            --proto-redir '=https' \
+            --output "${TEMP_FILE}" \
+            "${SOURCE_URL}"
+
+          if [[ ! -s "${TEMP_FILE}" ]]; then
+            echo "::error::下载到的源文件为空"
+            exit 1
+          fi
+
+          # 先比较，确认下载成功后再替换目标文件
+          if [[ -f "${TARGET_FILE}" ]] && cmp --silent "${TEMP_FILE}" "${TARGET_FILE}"; then
+            SOURCE_STATUS="源文件无变化"
+            SOURCE_CHANGED="false"
+            echo "源文件内容没有变化。"
+          else
+            SOURCE_STATUS="源文件已更新"
+            SOURCE_CHANGED="true"
+
+            # 下载完成并验证后再替换，避免损坏现有文件
+            install -m 0644 "${TEMP_FILE}" "${TARGET_FILE}"
+            echo "源文件已更新。"
+          fi
+
+          mkdir -p "$(dirname "${LOG_FILE}")"
+
+          UTC_TIME="$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          BEIJING_TIME="$(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S UTC+8')"
+          FILE_SIZE="$(stat --format='%s' "${TARGET_FILE}")"
+          FILE_SHA256="$(sha256sum "${TARGET_FILE}" | awk '{print $1}')"
+
+          # 每次运行都覆盖日志，确保每次运行产生新的提交内容
+          cat > "${LOG_FILE}" <<EOF
+          同步状态: 成功
+          源文件状态: ${SOURCE_STATUS}
+          UTC 时间: ${UTC_TIME}
+          北京时间: ${BEIJING_TIME}
+          触发方式: ${TRIGGER_EVENT}
+          GitHub Run ID: ${RUN_ID}
+          GitHub Run Attempt: ${RUN_ATTEMPT}
+          源文件 URL: ${SOURCE_URL}
+          目标文件: ${TARGET_FILE}
+          文件大小: ${FILE_SIZE} bytes
+          SHA256: ${FILE_SHA256}
+          EOF
+
+          {
+            echo "source_changed=${SOURCE_CHANGED}"
+            echo "utc_time=${UTC_TIME}"
+            echo "beijing_time=${BEIJING_TIME}"
+            echo "sha256=${FILE_SHA256}"
+          } >> "${GITHUB_OUTPUT}"
+
+          {
+            echo "## 源代码同步结果"
+            echo
+            echo "- 同步状态：成功"
+            echo "- 源文件状态：${SOURCE_STATUS}"
+            echo "- UTC 时间：${UTC_TIME}"
+            echo "- 北京时间：${BEIJING_TIME}"
+            echo "- 文件大小：${FILE_SIZE} bytes"
+            echo "- SHA256：\`${FILE_SHA256}\`"
+            echo "- Run ID：\`${RUN_ID}\`"
+            echo "- Run Attempt：\`${RUN_ATTEMPT}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Commit and push every run
+        shell: bash
+        env:
+          TARGET_BRANCH: ${{ github.event.repository.default_branch }}
+          SOURCE_CHANGED: ${{ steps.sync.outputs.source_changed }}
+          UTC_TIME: ${{ steps.sync.outputs.utc_time }}
+        run: |
+          set -Eeuo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -- "${TARGET_FILE}" "${LOG_FILE}"
+
+          if [[ "${SOURCE_CHANGED}" == "true" ]]; then
+            COMMIT_MESSAGE="chore: sync ${TARGET_FILE} at ${UTC_TIME} [skip ci]"
+          else
+            COMMIT_MESSAGE="chore: keep repository active at ${UTC_TIME} [skip ci]"
+          fi
+
+          # latest.log 每次都会更新；--allow-empty 作为兜底
+          git commit --allow-empty -m "${COMMIT_MESSAGE}"
+
+          git push origin "HEAD:${TARGET_BRANCH}"
