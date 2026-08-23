@@ -1,9 +1,9 @@
 同步状态: 成功
 源文件状态: 源文件无变化
-UTC 时间: 2026-08-22 20:18:33 UTC
-北京时间: 2026-08-23 04:18:33 UTC+8
+UTC 时间: 2026-08-23 20:18:19 UTC
+北京时间: 2026-08-24 04:18:19 UTC+8
 触发方式: schedule
-GitHub Run ID: 32596296723
+GitHub Run ID: 32663994568
 GitHub Run Attempt: 1
 源文件 URL: https://raw.githubusercontent.com/byJoey/cfnew/main/%E6%98%8E%E6%96%87%E6%BA%90%E5%90%97
 目标文件: _worker.js
