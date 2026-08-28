@@ -1,11 +1,11 @@
 同步状态: 成功
-源文件状态: 源文件无变化
-UTC 时间: 2026-08-26 22:41:25 UTC
-北京时间: 2026-08-27 06:41:25 UTC+8
+源文件状态: 源文件已更新
+UTC 时间: 2026-08-28 04:00:38 UTC
+北京时间: 2026-08-28 12:00:38 UTC+8
 触发方式: schedule
-GitHub Run ID: 33020460577
+GitHub Run ID: 33140544365
 GitHub Run Attempt: 1
 源文件 URL: https://raw.githubusercontent.com/byJoey/cfnew/main/%E6%98%8E%E6%96%87%E6%BA%90%E5%90%97
 目标文件: _worker.js
-文件大小: 434708 bytes
-SHA256: aa0897f6c1fb63e9025147efe3f76cc6091ac8b02814f1b6f99fd5645dc1afbc
+文件大小: 439879 bytes
+SHA256: edbee6aa68a418b65bc68f062f50ac1cb9dafa9f13176951c166815e983e871b
